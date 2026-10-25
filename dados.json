@@ -1,0 +1,20 @@
+{
+  "exemplo": true,
+  "cargo": "Presidente",
+  "abrangencia": "Brasil",
+  "turno": 2,
+  "atualizado_em": "2026-10-25T19:42:00-03:00",
+  "fonte": "TSE, divulgação de resultados",
+  "secoes_apuradas_pct": 87.4,
+  "totais": {
+    "eleitorado": 79605368,
+    "votos_validos": 60197954,
+    "brancos": 1203959,
+    "nulos": 1964360,
+    "abstencoes": 16239095
+  },
+  "candidatos": [
+    { "nome": "Candidato A", "numero": "00", "partido": "Partido X", "votos": 31482910, "cor": "#1f7a8c", "eleito": false },
+    { "nome": "Candidato B", "numero": "00", "partido": "Partido Y", "votos": 28715044, "cor": "#d4772c", "eleito": false }
+  ]
+}

@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Apuração - Presidente</title>
+<style>
+:root{
+  color-scheme: light dark;
+  --bg:#ffffff; --ink:#1f2328; --ink2:#59606a; --line:#d8dce1; --track:#eceef1;
+  --warn-bg:#fff4d6; --warn-ink:#6b4a00; --err-bg:#fde8e8; --err-ink:#8a1c1c;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#191919; --ink:#ececec; --ink2:#a2a7ae; --line:#34373b; --track:#2a2c2f;
+    --warn-bg:#3a2f10; --warn-ink:#f3d98b; --err-bg:#3d1f1f; --err-ink:#f3b4b4;
+  }
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{
+  background:var(--bg); color:var(--ink);
+  font-family:"Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  font-size:15px; line-height:1.5;
+  font-variant-numeric:tabular-nums lining-nums;
+}
+main{max-width:760px; margin:0 auto; padding:20px 20px 24px}
+header{display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap}
+h1{font-size:22px; font-weight:600; margin:0; letter-spacing:-0.01em}
+.sub{color:var(--ink2); font-size:14px; margin-top:2px}
+.badge{font-size:13px; padding:3px 10px; border-radius:6px; background:var(--warn-bg); color:var(--warn-ink)}
+.status{margin-top:18px}
+.status-row{display:flex; justify-content:space-between; font-size:14px; color:var(--ink2); margin-bottom:6px}
+.status-row strong{color:var(--ink); font-weight:600}
+.meter{height:6px; background:var(--track); border-radius:3px; overflow:hidden}
+.meter > div{height:100%; background:var(--ink2)}
+
+.split{margin-top:26px}
+.split-wrap{position:relative}
+.split-bar{display:flex; gap:2px; height:18px; border-radius:4px; overflow:hidden}
+.split-bar > div{min-width:2px}
+.split-mid{position:absolute; left:50%; top:-5px; bottom:-5px; width:0; border-left:1.5px dashed var(--ink2); opacity:.7}
+.split-note{font-size:12px; color:var(--ink2); text-align:center; margin-top:8px}
+
+ul.cands{list-style:none; margin:18px 0 0; padding:0}
+.cand{display:grid; grid-template-columns:12px 1fr auto; column-gap:12px; align-items:center; padding:14px 0; border-top:1px solid var(--line)}
+.cand:first-child{border-top:0}
+.sw{width:12px; height:12px; border-radius:3px}
+.nome{font-weight:600; font-size:16px}
+.meta{font-size:13px; color:var(--ink2)}
+.eleito{display:inline-block; margin-left:8px; font-size:12px; font-weight:600; padding:1px 8px; border-radius:6px; background:var(--ink); color:var(--bg); vertical-align:2px}
+.num{text-align:right}
+.pct{font-size:28px; font-weight:600; line-height:1.1; letter-spacing:-0.02em}
+.votos{font-size:13px; color:var(--ink2)}
+
+dl.totais{display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:0; margin:8px 0 0; border-top:1px solid var(--line)}
+dl.totais > div{padding:14px 12px 0 0}
+dl.totais dt{font-size:13px; color:var(--ink2)}
+dl.totais dd{margin:2px 0 0; font-size:18px; font-weight:600}
+dl.totais dd small{display:block; font-size:13px; font-weight:400; color:var(--ink2)}
+
+footer{margin-top:22px; font-size:12px; color:var(--ink2)}
+.msg{margin-top:18px; padding:12px 14px; border-radius:8px; background:var(--err-bg); color:var(--err-ink); font-size:14px}
+.stale{margin-top:10px; font-size:12px; color:var(--warn-ink); background:var(--warn-bg); padding:6px 10px; border-radius:6px}
+:focus-visible{outline:2px solid var(--ink2); outline-offset:2px}
+@media (max-width:480px){ .pct{font-size:24px} h1{font-size:20px} }
+</style>
+</head>
+<body>
+<main id="app" aria-live="polite">
+  <p class="sub">Carregando dados...</p>
+</main>
+
+<script>
+(function(){
+  var APP = document.getElementById('app');
+  var FONTE = 'dados.json';
+  var INTERVALO_MS = 60000;
+  var TZ = 'America/Fortaleza';
+  var PALETA = ['#1f7a8c','#d4772c','#6a5acd','#2e9d6b','#c44f6b','#8a8f2a','#4d6b8a','#a8793a','#7b4f9d','#3d8f8f','#9b5b3b'];
+
+  var nInt = new Intl.NumberFormat('pt-BR');
+  function pct(v, d){
+    if (d === undefined) d = 1;
+    var n = isFinite(v) ? v : 0;
+    return n.toLocaleString('pt-BR', {minimumFractionDigits:d, maximumFractionDigits:d}) + '%';
+  }
+  function el(tag, cls, text){
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text !== undefined && text !== null) e.textContent = text;
+    return e;
+  }
+  function num(v){ var n = Number(v); return isFinite(n) ? n : 0; }
+
+  function quando(iso){
+    var d = new Date(iso);
+    if (isNaN(d)) return {texto:'horário não informado', minutos:null};
+    var texto = d.toLocaleString('pt-BR', {timeZone:TZ, day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit'});
+    var min = Math.max(0, Math.round((Date.now() - d.getTime()) / 60000));
+    return {texto:texto.replace(',', ' às'), minutos:min};
+  }
+  function haQuanto(min){
+    if (min === null) return '';
+    if (min < 1) return 'agora há pouco';
+    if (min < 60) return 'há ' + min + ' min';
+    var h = Math.floor(min / 60);
+    if (h < 24) return 'há ' + h + ' h';
+    return 'há ' + Math.floor(h / 24) + ' d';
+  }
+
+  function render(d){
+    var cands = (d.candidatos || []).map(function(c, i){
+      return {
+        nome: c.nome || ('Candidato ' + (i + 1)),
+        numero: c.numero, partido: c.partido,
+        votos: num(c.votos), cor: c.cor || PALETA[i % PALETA.length],
+        eleito: !!c.eleito
+      };
+    });
+    cands.sort(function(a, b){ return b.votos - a.votos; });
+
+    var t = d.totais || {};
+    var soma = cands.reduce(function(s, c){ return s + c.votos; }, 0);
+    var validos = num(t.votos_validos) || soma;
+    var brancos = num(t.brancos), nulos = num(t.nulos), abst = num(t.abstencoes), eleitorado = num(t.eleitorado);
+    var comparecimento = validos + brancos + nulos;
+    cands.forEach(function(c){ c.pct = validos ? c.votos / validos * 100 : 0; });
+
+    APP.textContent = '';
+
+    var head = el('header');
+    var tit = el('div');
+    var h1 = el('h1', null, 'Apuração - ' + (d.cargo || 'Presidente'));
+    var partes = [];
+    if (d.abrangencia) partes.push(d.abrangencia);
+    if (d.turno) partes.push(d.turno + 'º turno');
+    tit.appendChild(h1);
+    tit.appendChild(el('div', 'sub', partes.join(', ')));
+    head.appendChild(tit);
+    if (d.exemplo) head.appendChild(el('span', 'badge', 'Dados de exemplo'));
+    APP.appendChild(head);
+
+    if (d.secoes_apuradas_pct !== undefined && d.secoes_apuradas_pct !== null){
+      var p = Math.min(100, Math.max(0, num(d.secoes_apuradas_pct)));
+      var st = el('section', 'status');
+      var row = el('div', 'status-row');
+      row.appendChild(el('span', null, p >= 100 ? 'Apuração concluída' : 'Seções apuradas'));
+      row.appendChild(el('strong', null, pct(p)));
+      st.appendChild(row);
+      var m = el('div', 'meter');
+      m.setAttribute('role', 'progressbar');
+      m.setAttribute('aria-valuemin', '0'); m.setAttribute('aria-valuemax', '100');
+      m.setAttribute('aria-valuenow', String(Math.round(p)));
+      m.setAttribute('aria-label', 'Seções apuradas');
+      var fill = el('div'); fill.style.width = p + '%';
+      m.appendChild(fill); st.appendChild(m);
+      APP.appendChild(st);
+    }
+
+    if (cands.length && validos){
+      var sp = el('section', 'split');
+      var bar = el('div', 'split-bar');
+      bar.setAttribute('role', 'img');
+      bar.setAttribute('aria-label', 'Divisão dos votos válidos: ' + cands.map(function(c){ return c.nome + ' ' + pct(c.pct); }).join(', '));
+      cands.forEach(function(c){
+        var s = el('div'); s.style.width = c.pct + '%'; s.style.background = c.cor;
+        s.title = c.nome + ': ' + pct(c.pct);
+        bar.appendChild(s);
+      });
+      var wrap = el('div', 'split-wrap');
+      wrap.appendChild(bar);
+      if (cands.length === 2) wrap.appendChild(el('div', 'split-mid'));
+      sp.appendChild(wrap);
+      if (cands.length === 2){
+        sp.appendChild(el('div', 'split-note', 'A linha tracejada marca 50% dos votos válidos'));
+      }
+      APP.appendChild(sp);
+    }
+
+    var ul = el('ul', 'cands');
+    cands.forEach(function(c){
+      var li = el('li', 'cand');
+      var sw = el('span', 'sw'); sw.style.background = c.cor; sw.setAttribute('aria-hidden', 'true');
+      var info = el('div');
+      var nm = el('div', 'nome', c.nome);
+      if (c.eleito) nm.appendChild(el('span', 'eleito', 'Eleito'));
+      info.appendChild(nm);
+      var meta = [];
+      if (c.numero !== undefined && c.numero !== null && c.numero !== '') meta.push('Número ' + c.numero);
+      if (c.partido) meta.push(c.partido);
+      if (meta.length) info.appendChild(el('div', 'meta', meta.join(', ')));
+      var nu = el('div', 'num');
+      nu.appendChild(el('div', 'pct', pct(c.pct)));
+      nu.appendChild(el('div', 'votos', nInt.format(c.votos) + ' votos'));
+      li.appendChild(sw); li.appendChild(info); li.appendChild(nu);
+      ul.appendChild(li);
+    });
+    APP.appendChild(ul);
+
+    var dl = el('dl', 'totais');
+    function item(rotulo, valor, sub){
+      var w = el('div');
+      w.appendChild(el('dt', null, rotulo));
+      var dd = el('dd', null, valor);
+      if (sub) dd.appendChild(el('small', null, sub));
+      w.appendChild(dd);
+      dl.appendChild(w);
+    }
+    item('Votos válidos', nInt.format(validos), comparecimento ? pct(validos / comparecimento * 100) + ' dos votos' : '');
+    item('Brancos', nInt.format(brancos), comparecimento ? pct(brancos / comparecimento * 100) + ' dos votos' : '');
+    item('Nulos', nInt.format(nulos), comparecimento ? pct(nulos / comparecimento * 100) + ' dos votos' : '');
+    if (eleitorado) item('Abstenção', nInt.format(abst), pct(abst / eleitorado * 100) + ' do eleitorado');
+    APP.appendChild(dl);
+
+    var q = quando(d.atualizado_em);
+    var ft = el('footer');
+    var linha = 'Atualizado em ' + q.texto;
+    var rel = haQuanto(q.minutos);
+    if (rel) linha += ' (' + rel + ')';
+    ft.appendChild(el('div', null, linha));
+    ft.appendChild(el('div', null, 'Fonte: ' + (d.fonte || 'TSE, divulgação de resultados')));
+    APP.appendChild(ft);
+  }
+
+  function erro(msg){
+    if (APP.querySelector('header')){
+      var old = APP.querySelector('.stale');
+      if (old) old.remove();
+      APP.appendChild(el('div', 'stale', msg));
+    } else {
+      APP.textContent = '';
+      APP.appendChild(el('div', 'msg', msg));
+    }
+  }
+
+  function carregar(){
+    fetch(FONTE + '?t=' + Date.now(), {cache:'no-store'})
+      .then(function(r){ if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(render)
+      .catch(function(){
+        erro('Não foi possível ler o arquivo dados.json. Confira se ele está na mesma pasta do index.html e se a página está aberta pelo GitHub Pages (abrir o arquivo direto do computador não funciona).');
+      });
+  }
+  carregar();
+  setInterval(carregar, INTERVALO_MS);
+})();
+</script>
+</body>
+</html>
