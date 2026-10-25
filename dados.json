@@ -1,20 +1,20 @@
 {
-  "exemplo": true,
+  "exemplo": false,
   "cargo": "Presidente",
   "abrangencia": "Brasil",
   "turno": 2,
-  "atualizado_em": "2026-10-25T19:42:00-03:00",
-  "fonte": "TSE, divulgação de resultados",
-  "secoes_apuradas_pct": 87.4,
+  "atualizado_em": "2026-10-24T19:19:13-03:00",
+  "fonte": "TSE, divulgação de resultados (arquivo br-c0001-e006258-u.json)",
+  "secoes_apuradas_pct": 0,
   "totais": {
-    "eleitorado": 79605368,
-    "votos_validos": 60197954,
-    "brancos": 1203959,
-    "nulos": 1964360,
-    "abstencoes": 16239095
+    "eleitorado": 158745502,
+    "votos_validos": 0,
+    "brancos": 0,
+    "nulos": 0,
+    "abstencoes": 0
   },
   "candidatos": [
-    { "nome": "Candidato A", "numero": "00", "partido": "Partido X", "votos": 31482910, "cor": "#1f7a8c", "eleito": false },
-    { "nome": "Candidato B", "numero": "00", "partido": "Partido Y", "votos": 28715044, "cor": "#d4772c", "eleito": false }
+    { "nome": "Lula", "numero": "13", "partido": "PT", "votos": 0, "cor": "#1f7a8c", "eleito": false },
+    { "nome": "Flávio Bolsonaro", "numero": "22", "partido": "PL", "votos": 0, "cor": "#d4772c", "eleito": false }
   ]
 }
