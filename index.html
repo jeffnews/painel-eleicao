@@ -196,7 +196,7 @@ function haQuanto(d){
 }
 
 /* ============ busca de dados ============ */
-var ST = { br2:null, br1:null, uf:{}, uf1:{}, fonteBR:'', dirFalhas:0, dirOK:false, ufFonte:{}, log:[] };
+var ST = { br2:null, br1:null, proj:null, uf:{}, uf1:{}, fonteBR:'', dirFalhas:0, dirOK:false, ufFonte:{}, log:[] };
 function log(rot, st, det){ ST.log.unshift({t:new Date().toLocaleTimeString('pt-BR'), rot:rot, st:st, det:det||''}); if(ST.log.length>60) ST.log.length=60; }
 function getJSON(url, rot){
   var t0=performance.now();
@@ -234,6 +234,9 @@ function carregarUFs(){
   }));
 }
 
+function carregarProj(){
+  return getJSON(urlLocal('projecao'),'cópia: projeção por município').then(function(j){ ST.proj=j; }).catch(function(){});
+}
 function carregarUF1(){
   var faltam=UFS.filter(function(uf){ return !ST.uf1[uf]; });
   return Promise.all(faltam.map(function(uf){
@@ -494,6 +497,59 @@ function secVirar(f){
   return s;
 }
 
+/* ============ projeção por município ============ */
+function curto(n){ return String(n).split(' ')[0]; }
+function fmtSinal(v){ var a=Math.abs(v).toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1}); return (v>0.049?'+':(v<-0.049?'\u2212':''))+a; }
+function secProjecao(f){
+  var P=ST.proj; if(!P||!P.brasil||!P.cand) return null;
+  if(P.cand[0]!==f[0].n || P.cand[1]!==f[1].n) return null;
+  var s=el('section'); s.appendChild(el('h2',null,'Projeção por município (estimativa)'));
+  s.appendChild(el('p','sub','Compara cada município já apurado com ele mesmo no 1º turno e aplica essa variação aos que faltam, agrupando por estado, perfil de voto e tamanho. A faixa de erro (cerca de 90%) combina a variação entre municípios com um acréscimo que diminui conforme a apuração avança. Não é resultado oficial e erra mais quando os municípios que faltam são muito diferentes dos já apurados.'));
+  var b=P.brasil, cob=P.cobertura||{}, card=el('div','vcard');
+  function linha(t){ card.appendChild(el('p',null,t)); }
+  var v=b.veredito;
+  if(v==='base'){ linha('Aguardando os dados do 1º turno por município ('+fmtInt(cob.com_base||0)+' de '+fmtInt(cob.municipios||0)+').'); }
+  else if(v==='cedo'){ linha('Cedo demais para projetar: só '+fmtPct(cob.apurado_base_pct||0)+' dos votos esperados foram apurados (o mínimo é 25%).'); }
+  else {
+    if(v==='fim') linha('Todos os municípios foram apurados.');
+    else if(v==='indef') linha('Estimativa indefinida: a diferença cabe dentro da margem de erro.');
+    else linha('Na estimativa, '+(v==='a'?f[0].nome:f[1].nome)+' está à frente.');
+    linha('Votos válidos estimados: '+f[0].nome+' '+fmtPct(b.pa)+' ('+fmtInt(b.a)+') x '+f[1].nome+' '+fmtPct(b.pb)+' ('+fmtInt(b.b)+').');
+    linha('Diferença: '+fmtSinal(b.margem_pp)+' p.p., faixa de '+fmtSinal(b.lo_pp)+' a '+fmtSinal(b.hi_pp)+' p.p. (valores positivos favorecem '+f[0].nome+').');
+  }
+  linha('Municípios com dados do 1º turno: '+fmtInt(cob.com_base||0)+' de '+fmtInt(cob.municipios||0)+'. Concluídos: '+fmtInt(cob.concluidos||0)+'. Em andamento: '+fmtInt(cob.em_andamento||0)+'. Apurado: '+fmtPct(cob.apurado_base_pct||0)+' dos votos esperados.');
+  var g=P.gerado_em? new Date(P.gerado_em):null;
+  if(g&&!isNaN(g)) linha('Projeção calculada pelo robô '+haQuanto(g)+'.');
+  s.appendChild(card);
+
+  var ufs=Object.keys(P.estados||{});
+  if(ufs.length){
+    var linhas=ufs.map(function(uf){ var e=P.estados[uf]; e.uf=uf; e.nome=nomeUF(uf); return e; });
+    function ordem(e){ return (e.veredito==='cedo')?1:0; }
+    linhas.sort(function(x,y){ var o=ordem(x)-ordem(y); if(o) return o; if(ordem(x)) return x.nome.localeCompare(y.nome,'pt-BR'); return Math.abs(x.margem_pp)-Math.abs(y.margem_pp); });
+    var box=el('div','rolavel'), t=el('table'), th=el('thead'), tr=el('tr');
+    ['Estado',curto(f[0].nome)+' x '+curto(f[1].nome),'Diferença (p.p.)','Situação'].forEach(function(x){ tr.appendChild(el('th',null,x)); });
+    th.appendChild(tr); t.appendChild(th);
+    var tb=el('tbody');
+    linhas.forEach(function(e){
+      var r=el('tr'); r.appendChild(el('td',null,e.nome));
+      var c1=el('td'), c2=el('td'), c3=el('td');
+      if(e.veredito==='cedo'){ c1.textContent='-'; c2.textContent='-'; c3.textContent='Cedo demais'; c3.appendChild(el('small',null,fmtPct(e.apurado_base_pct)+' apurado')); }
+      else {
+        c1.textContent=fmtPct(e.pa)+' x '+fmtPct(e.pb);
+        c2.textContent=fmtSinal(e.margem_pp); c2.appendChild(el('small',null,fmtSinal(e.lo_pp)+' a '+fmtSinal(e.hi_pp)));
+        if(e.veredito==='fim'){ c3.textContent='Concluído'; }
+        else if(e.veredito==='indef'){ c3.textContent='Indefinido'; }
+        else { var i=e.veredito==='a'?0:1; c3.appendChild(dotColor(f[i].cor)); c3.appendChild(document.createTextNode(curto(f[i].nome))); }
+      }
+      r.appendChild(c1); r.appendChild(c2); r.appendChild(c3); tb.appendChild(r);
+    });
+    t.appendChild(tb); box.appendChild(t); s.appendChild(box);
+    s.appendChild(el('p','sub','Positivo na diferença = '+f[0].nome+' à frente. Abaixo de cada diferença, a faixa de erro. "Indefinido" significa que a faixa inclui o empate.'));
+  }
+  return s;
+}
+
 function secMapa(f){
   var s=el('section'); s.appendChild(el('h2',null,'Resultado por estado'));
   var grade=el('div','mapa-grade'), box=el('div','mapbox'), tip=el('div','tip');
@@ -596,6 +652,7 @@ function secDebug(){
   var txt=[];
   txt.push('Tentativas diretas ao TSE com falha seguida: '+ST.dirFalhas+' (desiste em 3)');
   txt.push('Estados carregados: '+Object.keys(ST.uf).length+' de '+UFS.length+' (1º turno: '+Object.keys(ST.uf1).length+')');
+  if(ST.proj){ txt.push('Projeção: '+JSON.stringify(ST.proj.cobertura||{})+' | '+JSON.stringify((ST.proj.brasil||{}).veredito)); }
   if(ST.br2){ txt.push('BR 2º turno, blocos brutos:'); txt.push(' s: '+JSON.stringify(ST.br2.bruto.s)); txt.push(' e: '+JSON.stringify(ST.br2.bruto.e)); txt.push(' v: '+JSON.stringify(ST.br2.bruto.v)); }
   txt.push(''); txt.push('Últimas requisições:');
   ST.log.slice(0,40).forEach(function(l){ txt.push(l.t+'  '+l.st.toUpperCase()+'  '+l.rot+'  '+l.det); });
@@ -623,13 +680,14 @@ function render(){
   APP.appendChild(secDuelo(f));
   APP.appendChild(secComparacao(f));
   APP.appendChild(secVirar(f));
+  var sp=secProjecao(f); if(sp) APP.appendChild(sp);
   if(MAPA){ APP.appendChild(secMapa(f)); APP.appendChild(secTabela(f)); }
   APP.appendChild(secRodape());
   if(DEBUG) APP.appendChild(secDebug());
 }
 
 /* ============ ciclo de atualização ============ */
-function cicloBR(){ return carregarBR2().catch(function(){}).then(function(){ if(ST.br1||!ST.br2) return; return carregarBR1().catch(function(){}); }).then(render); }
+function cicloBR(){ return carregarBR2().catch(function(){}).then(function(){ if(ST.br1||!ST.br2) return; return carregarBR1().catch(function(){}); }).then(carregarProj).then(render); }
 function cicloUF(){ return carregarUFs().then(render).then(carregarUF1).then(render); }
 function iniciar(){
   cicloBR().then(cicloUF);

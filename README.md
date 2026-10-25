@@ -10,6 +10,7 @@ Endereço: https://jeffnews.github.io/painel-eleicao/
 - Placar dos dois candidatos, com percentual sobre votos válidos, votos e diferença entre eles.
 - Comparação com o 1º turno: percentual e votos dos finalistas, brancos, nulos e abstenção, com a variação em pontos percentuais.
 - "O que falta para virar": estimativa dos votos válidos que ainda faltam e o percentual deles que o segundo colocado precisaria para empatar, no Brasil e em cada estado. Não é previsão de vencedor.
+- "Projeção por município": estimativa do resultado final com faixa de erro, calculada pelo robô comparando cada município já apurado com ele mesmo no 1º turno. Mostra "indefinido" quando a faixa inclui o empate e "cedo demais" enquanto há pouca apuração. Não é resultado oficial.
 - Mapa do Brasil por estado, colorido pelo candidato que lidera (cor mais forte = maior margem).
 - Resumo por região (Norte, Nordeste, Centro-Oeste, Sudeste, Sul e Exterior).
 - Tabela com os 27 estados e o Exterior, ordenável pelas colunas.
@@ -35,7 +36,8 @@ https://jeffnews.github.io/painel-eleicao/?debug=1
 | --- | --- |
 | `index.html` | A página inteira (HTML, CSS, JavaScript e o mapa dos estados). |
 | `.github/workflows/atualizar.yml` | Robô que baixa os arquivos do TSE e publica na pasta `tse/`. |
-| `tse/` | Cópias dos arquivos do TSE. Criada e atualizada pelo robô, não precisa mexer. |
+| `projecao.py` | Script do robô que baixa os municípios em lotes e calcula a projeção. Fica na raiz do repositório. |
+| `tse/` | Cópias dos arquivos do TSE e da projeção (`projecao.json`, `mun-t1.json`, `mun-t2.json`, `mun-lista.json`). Criada e atualizada pelo robô, não precisa mexer. |
 
 ## Robô de atualização
 
@@ -47,6 +49,13 @@ O fluxo `Atualizar dados do TSE` tem dois modos:
 O robô só faz commit quando algum arquivo mudou. Se algum download falhar, o log mostra linhas `FALHOU` com o endereço e o motivo.
 
 Depois da eleição, desligue o agendamento em *Actions*, *Atualizar dados do TSE*, menu `...`, *Disable workflow*.
+
+## Projeção por município
+
+- O 1º turno de cada município (cerca de 5,6 mil arquivos) é baixado uma vez, em lotes. O 2º turno é atualizado só para municípios que ainda não terminaram: os em andamento a cada rodada e uma fatia rotativa dos que não começaram. Municípios concluídos não são consultados de novo.
+- Limites no começo de `projecao.py`: `MAX_PEDIDOS` (pedidos por rodada, padrão 1200), `REQ_POR_S` (pedidos por segundo, padrão 15), `CONCORRENCIA`, `ORCAMENTO_S` (tempo máximo por rodada, padrão 70 s). Também podem ser mudados por variáveis de ambiente.
+- A projeção só aparece como "à frente" quando pelo menos 25% dos votos esperados foram apurados e a faixa de erro não inclui o empate.
+- A faixa de erro vem de reamostragens dos municípios já apurados, mais um acréscimo que diminui conforme a apuração avança. Ela não captura tudo: se os municípios que faltam forem muito diferentes dos apurados (por exemplo, só cidades pequenas apuraram até agora), o erro real pode ser maior.
 
 ## Configuração
 
