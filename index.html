@@ -128,7 +128,7 @@ var CFG = {
   ],
   direto: true,
   msBR: 60000,
-  msUF: 120000
+  msUF: 60000
 };
 var UFS = ['ac','al','ap','am','ba','ce','df','es','go','ma','mt','ms','mg','pa','pb','pr','pe','pi','rj','rn','rs','ro','rr','sc','sp','se','to','zz'];
 var REGIOES = [
@@ -192,7 +192,7 @@ function haQuanto(d){
 }
 
 /* ============ busca de dados ============ */
-var ST = { br2:null, br1:null, uf:{}, fonteBR:'', dirFalhas:0, dirOK:false, log:[] };
+var ST = { br2:null, br1:null, uf:{}, fonteBR:'', dirFalhas:0, dirOK:false, ufFonte:{}, log:[] };
 function log(rot, st, det){ ST.log.unshift({t:new Date().toLocaleTimeString('pt-BR'), rot:rot, st:st, det:det||''}); if(ST.log.length>60) ST.log.length=60; }
 function getJSON(url, rot){
   var t0=performance.now();
@@ -221,9 +221,11 @@ function carregarBR1(){
 }
 function carregarUFs(){
   return Promise.all(UFS.map(function(uf){
-    return getJSON(urlLocal(uf+'-t2'),'cópia: '+uf+' 2º turno').catch(function(e){
-      if(!ST.dirOK) throw e;
-      return getJSON(urlTSE(CFG.t2,uf),'TSE direto: '+uf+' 2º turno');
+    var p = ST.dirOK
+      ? getJSON(urlTSE(CFG.t2,uf),'TSE direto: '+uf+' 2º turno').then(function(j){ ST.ufFonte[uf]='direto'; return j; })
+      : Promise.reject(new Error('sem acesso direto'));
+    return p.catch(function(){
+      return getJSON(urlLocal(uf+'-t2'),'cópia: '+uf+' 2º turno').then(function(j){ ST.ufFonte[uf]='cópia'; return j; });
     }).then(function(j){ ST.uf[uf]=normalizar(j); }).catch(function(){});
   }));
 }
@@ -454,9 +456,14 @@ function secTabela(f){
   return s;
 }
 
+function fonteUFs(){
+  var d=0,c=0; Object.keys(ST.ufFonte).forEach(function(k){ if(ST.ufFonte[k]==='direto') d++; else c++; });
+  if(!d&&!c) return 'sem dados';
+  return (d? d+' direto do TSE':'')+(d&&c?', ':'')+(c? c+' da cópia no GitHub':'');
+}
 function secRodape(){
   var ft=el('footer'), q=ST.br2.quando;
-  ft.appendChild(el('div',null,'Dados do TSE gerados em '+fmtQuando(q)+(q?' ('+haQuanto(q)+')':'')+'. Página consultada às '+new Date().toLocaleTimeString('pt-BR')+', fonte: '+(ST.fonteBR||'-')+'.'));
+  ft.appendChild(el('div',null,'Dados do TSE gerados em '+fmtQuando(q)+(q?' ('+haQuanto(q)+')':'')+'. Página consultada às '+new Date().toLocaleTimeString('pt-BR')+', fonte nacional: '+(ST.fonteBR||'-')+'; estados: '+fonteUFs()+'.'));
   ft.appendChild(el('div',null,'Fonte: Tribunal Superior Eleitoral, divulgação de resultados. Painel não oficial.'));
   if(!DEBUG){ var a=el('a',null,'Diagnóstico das fontes'); a.href='?debug=1'; var d=el('div'); d.appendChild(a); ft.appendChild(d); }
   return ft;
