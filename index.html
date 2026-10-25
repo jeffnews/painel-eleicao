@@ -31,6 +31,8 @@ section{margin-top:36px}
 .sub{color:var(--ink2); font-size:14px}
 .topo{display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap}
 .chip{font-size:13px; padding:3px 10px; border-radius:6px; background:var(--soft); color:var(--ink2); border:1px solid var(--line)}
+.topo-dir{display:flex; flex-direction:column; align-items:flex-end; gap:4px}
+.contagem{font-size:12px; color:var(--ink2); font-variant-numeric:tabular-nums}
 .chip.aviso{background:var(--warn-bg); color:var(--warn-ink); border-color:transparent}
 
 .prog{margin-top:18px}
@@ -196,7 +198,7 @@ function haQuanto(d){
 }
 
 /* ============ busca de dados ============ */
-var ST = { br2:null, br1:null, proj:null, uf:{}, uf1:{}, fonteBR:'', dirFalhas:0, dirOK:false, ufFonte:{}, log:[] };
+var ST = { br2:null, br1:null, proj:null, prox:0, buscando:false, uf:{}, uf1:{}, fonteBR:'', dirFalhas:0, dirOK:false, ufFonte:{}, log:[] };
 function log(rot, st, det){ ST.log.unshift({t:new Date().toLocaleTimeString('pt-BR'), rot:rot, st:st, det:det||''}); if(ST.log.length>60) ST.log.length=60; }
 function getJSON(url, rot){
   var t0=performance.now();
@@ -298,7 +300,9 @@ function secTopo(f){
   h.appendChild(t);
   var q=ST.br2.quando;
   var chip=el('span','chip'+(q&&(Date.now()-q.getTime())>1800000?' aviso':''), q? ('Dados do TSE '+haQuanto(q)) : 'Sem horário do TSE');
-  h.appendChild(chip);
+  var dir=el('div','topo-dir'); dir.appendChild(chip);
+  var cont=el('span','contagem'); cont.id='contagem'; dir.appendChild(cont);
+  h.appendChild(dir);
   return h;
 }
 
@@ -660,6 +664,14 @@ function secDebug(){
   return d;
 }
 
+function atualizarContagem(){
+  var e=document.getElementById('contagem'); if(!e) return;
+  if(document.hidden){ e.textContent='Pausado (aba em segundo plano)'; return; }
+  if(ST.buscando){ e.textContent='Atualizando...'; return; }
+  var s=Math.max(0,Math.ceil((ST.prox-Date.now())/1000));
+  e.textContent = s>0 ? ('Próxima atualização em '+s+' s') : 'Atualizando...';
+}
+
 function render(){
   APP.textContent='';
   if(!ST.br2){
@@ -684,15 +696,21 @@ function render(){
   if(MAPA){ APP.appendChild(secMapa(f)); APP.appendChild(secTabela(f)); }
   APP.appendChild(secRodape());
   if(DEBUG) APP.appendChild(secDebug());
+  atualizarContagem();
 }
 
 /* ============ ciclo de atualização ============ */
-function cicloBR(){ return carregarBR2().catch(function(){}).then(function(){ if(ST.br1||!ST.br2) return; return carregarBR1().catch(function(){}); }).then(carregarProj).then(render); }
+function cicloBR(){
+  ST.buscando=true; atualizarContagem();
+  return carregarBR2().catch(function(){}).then(function(){ if(ST.br1||!ST.br2) return; return carregarBR1().catch(function(){}); }).then(carregarProj).then(render).then(function(){ ST.buscando=false; atualizarContagem(); }, function(){ ST.buscando=false; atualizarContagem(); });
+}
 function cicloUF(){ return carregarUFs().then(render).then(carregarUF1).then(render); }
 function iniciar(){
+  ST.prox=Date.now()+CFG.msBR;
   cicloBR().then(cicloUF);
-  setInterval(function(){ if(!document.hidden) cicloBR(); }, CFG.msBR);
+  setInterval(function(){ ST.prox=Date.now()+CFG.msBR; if(!document.hidden) cicloBR(); }, CFG.msBR);
   setInterval(function(){ if(!document.hidden) cicloUF(); }, CFG.msUF);
+  setInterval(atualizarContagem, 1000);
 }
 iniciar();
 })();
