@@ -68,8 +68,8 @@ var CFG = {
   t2: { cod:'6258', arq:'006258' },   // 2º turno
   cargo: 'c0001',                      // 1 = Presidente
   finalistas: [
-    { n:'13', nome:'Lula',             cor:'#1f7a8c' },
-    { n:'22', nome:'Flávio Bolsonaro', cor:'#d4772c' }
+    { n:'13', nome:'Lula',             cor:'#c8323c' },
+    { n:'22', nome:'Flávio Bolsonaro', cor:'#2563d6' }
   ],
   direto: true,    // tenta o TSE direto antes da cópia do repositório
   msBR: 60000,     // intervalo do arquivo nacional (ms)
