@@ -1,0 +1,93 @@
+name: Atualizar dados do TSE
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+    inputs:
+      duracao_min:
+        description: 'Ficar atualizando por quantos minutos (0 = uma vez so)'
+        default: '0'
+      intervalo_s:
+        description: 'Segundos entre atualizacoes no modo continuo'
+        default: '90'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: atualizar-tse
+  cancel-in-progress: false
+
+jobs:
+  atualizar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 345
+    steps:
+      - uses: actions/checkout@v4
+      - name: Baixar os arquivos do TSE e publicar
+        env:
+          DURACAO: ${{ github.event.inputs.duracao_min || '0' }}
+          INTERVALO: ${{ github.event.inputs.intervalo_s || '90' }}
+        run: |
+          set -u
+          set +e
+          BASE="${TSE_BASE:-https://resultados.tse.jus.br/oficial/ele2026}"
+          CARGO="c0001"
+          UFS="ac al ap am ba ce df es go ma mt ms mg pa pb pr pe pi rj rn rs ro rr sc sp se to zz"
+          DURACAO="${DURACAO:-0}"
+          INTERVALO="${INTERVALO:-90}"
+          [ "$DURACAO" -gt 330 ] && DURACAO=330
+          mkdir -p tse
+          OK=0
+
+          baixar() {
+            local url="$1" destino="$2" tmp
+            tmp="$(mktemp)"
+            if curl -fsS --compressed --retry 2 --max-time 25 -A "painel-eleicao (GitHub Actions)" "$url" -o "$tmp" 2>"$tmp.err" \
+               && python3 -c "import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if 'carg' in d else 1)" "$tmp" 2>/dev/null; then
+              OK=$((OK+1))
+              if ! cmp -s "$tmp" "$destino"; then mv "$tmp" "$destino"; echo "atualizado: $destino"; else rm -f "$tmp"; fi
+              rm -f "$tmp.err"
+              return 0
+            fi
+            echo "FALHOU: $url -> $(tr -d '\n' < "$tmp.err" | head -c 150)"
+            rm -f "$tmp" "$tmp.err"
+            return 1
+          }
+
+          ciclo() {
+            OK=0
+            baixar "$BASE/6258/dados/br/br-$CARGO-e006258-u.json" tse/br-t2.json
+            [ -s tse/br-t1.json ] || baixar "$BASE/6257/dados/br/br-$CARGO-e006257-u.json" tse/br-t1.json
+            for uf in $UFS; do
+              baixar "$BASE/6258/dados/$uf/$uf-$CARGO-e006258-u.json" "tse/$uf-t2.json"
+              sleep 0.3
+            done
+            echo "arquivos lidos com sucesso neste ciclo: $OK"
+          }
+
+          publicar() {
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add tse
+            if ! git diff --staged --quiet; then
+              git commit -q -m "Atualiza dados do TSE"
+              if git push -q origin HEAD || { git pull --rebase -q origin "$(git branch --show-current)" && git push -q origin HEAD; }; then
+                echo "publicado"
+              else
+                echo "ERRO ao enviar para o GitHub"
+              fi
+            else
+              echo "sem mudanças"
+            fi
+          }
+
+          FIM=$(( $(date +%s) + DURACAO * 60 ))
+          while true; do
+            ciclo
+            publicar
+            if [ "$DURACAO" -le 0 ] && [ "$OK" -eq 0 ]; then echo "Nenhum arquivo foi baixado."; exit 1; fi
+            [ "$DURACAO" -gt 0 ] && [ "$(date +%s)" -lt "$FIM" ] || break
+            sleep "$INTERVALO"
+          done
