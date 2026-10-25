@@ -62,6 +62,7 @@ jobs:
             [ -s tse/br-t1.json ] || baixar "$BASE/6257/dados/br/br-$CARGO-e006257-u.json" tse/br-t1.json
             for uf in $UFS; do
               baixar "$BASE/6258/dados/$uf/$uf-$CARGO-e006258-u.json" "tse/$uf-t2.json"
+              [ -s "tse/$uf-t1.json" ] || baixar "$BASE/6257/dados/$uf/$uf-$CARGO-e006257-u.json" "tse/$uf-t1.json"
               sleep 0.3
             done
             echo "arquivos lidos com sucesso neste ciclo: $OK"
