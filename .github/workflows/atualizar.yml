@@ -68,6 +68,12 @@ jobs:
             echo "arquivos lidos com sucesso neste ciclo: $OK"
           }
 
+          projetar() {
+            if [ -f projecao.py ]; then
+              TSE_DIR=tse python3 projecao.py || echo "projecao.py falhou"
+            fi
+          }
+
           publicar() {
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -87,6 +93,7 @@ jobs:
           FIM=$(( $(date +%s) + DURACAO * 60 ))
           while true; do
             ciclo
+            projetar
             publicar
             if [ "$DURACAO" -le 0 ] && [ "$OK" -eq 0 ]; then echo "Nenhum arquivo foi baixado."; exit 1; fi
             [ "$DURACAO" -gt 0 ] && [ "$(date +%s)" -lt "$FIM" ] || break
