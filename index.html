@@ -62,6 +62,9 @@ th{font-weight:600; color:var(--ink2); font-size:13px}
 td small{display:block; color:var(--ink2); font-size:12px}
 .pos{color:var(--ink)}
 .rolavel{overflow-x:auto}
+.vcard{background:var(--soft); border:1px solid var(--line); border-radius:8px; padding:14px 16px; margin:0 0 16px}
+.vcard p{margin:0 0 6px}
+.vcard p:last-child{margin-bottom:0}
 th button{all:unset; cursor:pointer; font:inherit; color:inherit; font-weight:600}
 th button:hover{color:var(--ink)}
 th button:focus-visible{outline:2px solid var(--ink2); outline-offset:2px}
@@ -128,7 +131,8 @@ var CFG = {
   ],
   direto: true,
   msBR: 60000,
-  msUF: 60000
+  msUF: 60000,
+  fatorRestante: [0.92, 1.04]
 };
 var UFS = ['ac','al','ap','am','ba','ce','df','es','go','ma','mt','ms','mg','pa','pb','pr','pe','pi','rj','rn','rs','ro','rr','sc','sp','se','to','zz'];
 var REGIOES = [
@@ -192,7 +196,7 @@ function haQuanto(d){
 }
 
 /* ============ busca de dados ============ */
-var ST = { br2:null, br1:null, uf:{}, fonteBR:'', dirFalhas:0, dirOK:false, ufFonte:{}, log:[] };
+var ST = { br2:null, br1:null, uf:{}, uf1:{}, fonteBR:'', dirFalhas:0, dirOK:false, ufFonte:{}, log:[] };
 function log(rot, st, det){ ST.log.unshift({t:new Date().toLocaleTimeString('pt-BR'), rot:rot, st:st, det:det||''}); if(ST.log.length>60) ST.log.length=60; }
 function getJSON(url, rot){
   var t0=performance.now();
@@ -227,6 +231,17 @@ function carregarUFs(){
     return p.catch(function(){
       return getJSON(urlLocal(uf+'-t2'),'cópia: '+uf+' 2º turno').then(function(j){ ST.ufFonte[uf]='cópia'; return j; });
     }).then(function(j){ ST.uf[uf]=normalizar(j); }).catch(function(){});
+  }));
+}
+
+function carregarUF1(){
+  var faltam=UFS.filter(function(uf){ return !ST.uf1[uf]; });
+  return Promise.all(faltam.map(function(uf){
+    var p = ST.dirOK
+      ? getJSON(urlTSE(CFG.t1,uf),'TSE direto: '+uf+' 1º turno')
+      : Promise.reject(new Error('sem acesso direto'));
+    return p.catch(function(){ return getJSON(urlLocal(uf+'-t1'),'cópia: '+uf+' 1º turno'); })
+      .then(function(j){ ST.uf1[uf]=normalizar(j); }).catch(function(){});
   }));
 }
 
@@ -372,6 +387,113 @@ function corDoEstado(r,f){
   var cor=d>0?f[0].cor:f[1].cor, op=0.3+0.7*Math.min(1,Math.abs(d)/30);
   return {fill:cor,op:op};
 }
+
+/* ============ o que falta para virar ============ */
+function fmtCompacto(v){
+  v=Math.round(v);
+  if(v>=1e6) return (v/1e6).toLocaleString('pt-BR',{maximumFractionDigits:1})+' mi';
+  if(v>=1e3) return Math.round(v/1e3).toLocaleString('pt-BR')+' mil';
+  return String(v);
+}
+function pctTeto(v){ return v>100 ? '>100%' : fmtPct(v); }
+function fmtFaixaPct(lo,hi){
+  if(lo>100) return 'mais de 100%';
+  if(Math.abs(hi-lo)<0.1) return pctTeto(lo);
+  return (lo.toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1}))+' a '+pctTeto(hi);
+}
+function virar(a,b,falt,Rlo,Rhi,temBase){
+  var r={a:a,b:b,m:Math.abs(a-b),l:a>b?0:(b>a?1:-1),falt:falt};
+  if(a+b===0){ r.estado='sem'; return r; }
+  if(falt<=0){ r.estado='fim'; return r; }
+  if(!temBase){ r.estado='base'; return r; }
+  r.Rlo=Rlo; r.Rhi=Rhi;
+  r.pLo=(1+r.m/Rhi)/2*100;
+  r.pHi=(1+r.m/Rlo)/2*100;
+  r.estado = r.pLo>100 ? 'imp' : 'aberto';
+  return r;
+}
+function restantesUF(uf){
+  var n2=ST.uf[uf], n1=ST.uf1[uf]; if(!n2) return null;
+  var falt=Math.max(0,n2.secoes.total-n2.secoes.apuradas);
+  var temBase=!!(n1&&n1.secoes.total&&n1.validos);
+  var media=temBase? n1.validos/n1.secoes.total : 0;
+  return {falt:falt, temBase:temBase, lo:falt*media*CFG.fatorRestante[0], hi:falt*media*CFG.fatorRestante[1]};
+}
+function virarBrasil(f){
+  var b2=ST.br2, b1=ST.br1;
+  var a=votosDe(b2,f[0].n), b=votosDe(b2,f[1].n);
+  var falt=Math.max(0,b2.secoes.total-b2.secoes.apuradas);
+  var lo=0, hi=0, ok=0;
+  UFS.forEach(function(uf){ var x=restantesUF(uf); if(x&&x.temBase){ lo+=x.lo; hi+=x.hi; ok++; } });
+  var porEstado = ok===UFS.length, temBase=porEstado;
+  if(!porEstado && b1 && b1.secoes.total && b1.validos){
+    var media=b1.validos/b1.secoes.total; lo=falt*media*CFG.fatorRestante[0]; hi=falt*media*CFG.fatorRestante[1]; temBase=true;
+  }
+  var r=virar(a,b,falt,lo,hi,temBase); r.porEstado=porEstado; r.secFalt=falt; r.secTot=b2.secoes.total;
+  return r;
+}
+function secVirar(f){
+  var s=el('section'); s.appendChild(el('h2',null,'O que falta para virar'));
+  var fr=CFG.fatorRestante;
+  s.appendChild(el('p','sub','Não é uma previsão de vencedor. Mostra quantos votos válidos ainda devem entrar e que parte deles o segundo colocado precisaria receber para empatar. Hipótese: cada seção que falta tem os votos válidos médios do 1º turno, multiplicados por '+fr[0].toLocaleString('pt-BR')+' a '+fr[1].toLocaleString('pt-BR')+'. Se as seções que faltam forem maiores ou menores que a média, a estimativa muda.'));
+
+  var r=virarBrasil(f), card=el('div','vcard');
+  var tr = r.l>=0 ? f[1-r.l] : null, ld = r.l>=0 ? f[r.l] : null;
+  function linha(t){ card.appendChild(el('p',null,t)); }
+  if(r.estado==='sem'){ linha('Ainda não há votos apurados.'); }
+  else if(r.estado==='fim'){ linha('Apuração concluída. '+(ld? ld.nome+' tem '+fmtInt(r.m)+' votos a mais.' : 'Empate em votos.')); }
+  else if(r.estado==='base'){ linha('Ainda faltam os dados do 1º turno para estimar os votos restantes.'); }
+  else {
+    var pctFalt = r.secTot? r.secFalt/r.secTot*100 : 0;
+    linha(ld ? (ld.nome+' lidera por '+fmtInt(r.m)+' votos válidos.') : 'Empate em votos válidos.');
+    linha('Faltam '+fmtPct(pctFalt)+' das seções. Estimativa dos votos válidos que faltam: '+fmtCompacto(r.Rlo)+' a '+fmtCompacto(r.Rhi)+'.');
+    if(tr){
+      var soFar = (r.a+r.b)>0 ? (r.l===0? r.b : r.a)/(r.a+r.b)*100 : 0;
+      if(r.estado==='imp') linha('Pelas estimativas, a virada é matematicamente impossível: '+tr.nome+' precisaria de mais de 100% dos votos restantes.');
+      else linha(tr.nome+' precisaria de '+fmtFaixaPct(r.pLo,r.pHi)+' dos votos restantes para empatar. Entre os já apurados, tem '+fmtPct(soFar)+'.');
+    } else linha('Com empate, qualquer um dos dois precisa de cerca de 50% dos votos restantes.');
+    if(!r.porEstado) linha('Estimativa nacional simplificada: ainda faltam dados por estado.');
+  }
+  s.appendChild(card);
+
+  var linhas=UFS.map(function(uf){
+    var n2=ST.uf[uf]; if(!n2) return {uf:uf, nome:nomeUF(uf), estado:'sem'};
+    var x=restantesUF(uf);
+    var q=virar(votosDe(n2,f[0].n), votosDe(n2,f[1].n), x.falt, x.lo, x.hi, x.temBase);
+    q.uf=uf; q.nome=nomeUF(uf); return q;
+  });
+  function grupo(q){ return q.estado==='aberto'?0 : q.estado==='imp'?1 : q.estado==='fim'?2 : 3; }
+  linhas.sort(function(x,y){
+    var gx=grupo(x), gy=grupo(y); if(gx!==gy) return gx-gy;
+    if(gx===0) return (x.pLo+x.pHi)-(y.pLo+y.pHi);
+    if(gx===1) return y.m-x.m;
+    return x.nome.localeCompare(y.nome,'pt-BR');
+  });
+  var box=el('div','rolavel'), t=el('table'), th=el('thead'), trh=el('tr');
+  ['Estado','Diferença (votos)','Faltam (est.)','Precisa de'].forEach(function(x){ trh.appendChild(el('th',null,x)); });
+  th.appendChild(trh); t.appendChild(th);
+  var tb=el('tbody');
+  linhas.forEach(function(q){
+    var r2=el('tr'); r2.appendChild(el('td',null,q.nome));
+    var c1=el('td'), c2=el('td'), c3=el('td');
+    if(q.estado==='aberto'||q.estado==='imp'||q.estado==='fim'){
+      if(q.l>=0){ c1.appendChild(dotColor(f[q.l].cor)); }
+      c1.appendChild(document.createTextNode(q.m? fmtInt(q.m) : '0'));
+    } else c1.textContent='-';
+    if(q.estado==='aberto'||q.estado==='imp') c2.textContent='\u2248 '+fmtCompacto((q.Rlo+q.Rhi)/2);
+    else c2.textContent = q.estado==='fim' ? '0' : '-';
+    if(q.estado==='aberto'){ if(q.l>=0) c3.appendChild(dotColor(f[1-q.l].cor)); c3.appendChild(document.createTextNode(fmtFaixaPct(q.pLo,q.pHi))); }
+    else if(q.estado==='imp') c3.textContent='Impossível';
+    else if(q.estado==='fim') c3.textContent='Concluído';
+    else if(q.estado==='base') c3.textContent='Sem 1º turno';
+    else c3.textContent='-';
+    r2.appendChild(c1); r2.appendChild(c2); r2.appendChild(c3); tb.appendChild(r2);
+  });
+  t.appendChild(tb); box.appendChild(t); s.appendChild(box);
+  s.appendChild(el('p','sub','A bolinha em "Precisa de" indica quem está atrás no estado. Estados em aberto aparecem primeiro, do mais próximo de virar ao mais distante.'));
+  return s;
+}
+
 function secMapa(f){
   var s=el('section'); s.appendChild(el('h2',null,'Resultado por estado'));
   var grade=el('div','mapa-grade'), box=el('div','mapbox'), tip=el('div','tip');
@@ -473,7 +595,7 @@ function secDebug(){
   var d=el('details','dbg'); d.open=true; d.appendChild(el('summary',null,'Diagnóstico'));
   var txt=[];
   txt.push('Tentativas diretas ao TSE com falha seguida: '+ST.dirFalhas+' (desiste em 3)');
-  txt.push('Estados carregados: '+Object.keys(ST.uf).length+' de '+UFS.length);
+  txt.push('Estados carregados: '+Object.keys(ST.uf).length+' de '+UFS.length+' (1º turno: '+Object.keys(ST.uf1).length+')');
   if(ST.br2){ txt.push('BR 2º turno, blocos brutos:'); txt.push(' s: '+JSON.stringify(ST.br2.bruto.s)); txt.push(' e: '+JSON.stringify(ST.br2.bruto.e)); txt.push(' v: '+JSON.stringify(ST.br2.bruto.v)); }
   txt.push(''); txt.push('Últimas requisições:');
   ST.log.slice(0,40).forEach(function(l){ txt.push(l.t+'  '+l.st.toUpperCase()+'  '+l.rot+'  '+l.det); });
@@ -500,6 +622,7 @@ function render(){
   APP.appendChild(secProgresso());
   APP.appendChild(secDuelo(f));
   APP.appendChild(secComparacao(f));
+  APP.appendChild(secVirar(f));
   if(MAPA){ APP.appendChild(secMapa(f)); APP.appendChild(secTabela(f)); }
   APP.appendChild(secRodape());
   if(DEBUG) APP.appendChild(secDebug());
@@ -507,7 +630,7 @@ function render(){
 
 /* ============ ciclo de atualização ============ */
 function cicloBR(){ return carregarBR2().catch(function(){}).then(function(){ if(ST.br1||!ST.br2) return; return carregarBR1().catch(function(){}); }).then(render); }
-function cicloUF(){ return carregarUFs().then(render); }
+function cicloUF(){ return carregarUFs().then(render).then(carregarUF1).then(render); }
 function iniciar(){
   cicloBR().then(cicloUF);
   setInterval(function(){ if(!document.hidden) cicloBR(); }, CFG.msBR);

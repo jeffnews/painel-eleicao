@@ -9,6 +9,7 @@ Endereço: https://jeffnews.github.io/painel-eleicao/
 - Progresso da apuração (seções apuradas).
 - Placar dos dois candidatos, com percentual sobre votos válidos, votos e diferença entre eles.
 - Comparação com o 1º turno: percentual e votos dos finalistas, brancos, nulos e abstenção, com a variação em pontos percentuais.
+- "O que falta para virar": estimativa dos votos válidos que ainda faltam e o percentual deles que o segundo colocado precisaria para empatar, no Brasil e em cada estado. Não é previsão de vencedor.
 - Mapa do Brasil por estado, colorido pelo candidato que lidera (cor mais forte = maior margem).
 - Resumo por região (Norte, Nordeste, Centro-Oeste, Sudeste, Sul e Exterior).
 - Tabela com os 27 estados e o Exterior, ordenável pelas colunas.
@@ -63,7 +64,8 @@ var CFG = {
   ],
   direto: true,    // tenta o TSE direto antes da cópia do repositório
   msBR: 60000,     // intervalo do arquivo nacional (ms)
-  msUF: 60000      // intervalo dos estados (ms)
+  msUF: 60000,     // intervalo dos estados (ms)
+  fatorRestante: [0.92, 1.04]  // faixa de votos válidos por seção que falta, em relação à média do 1º turno
 };
 ```
 
